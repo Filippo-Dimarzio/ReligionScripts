@@ -1,8 +1,17 @@
 import time
 import os
+import threading
 from datetime import datetime, timedelta
 
-#This script allows you to choose either Christian Prayer & Ramadan Prayer times
+# Safe screen clear function
+def safe_clear():
+    try:
+        if os.name == "nt":
+            os.system("cls")
+        elif "TERM" in os.environ:
+            os.system("clear")
+    except Exception:
+        pass
 
 # ------------------ LENT PRAYER FUNCTIONS ------------------
 
@@ -17,30 +26,25 @@ lent_prayer_times = {
 def get_lent_prayer_times():
     return {name: datetime.strptime(t, "%H:%M").time() for name, t in lent_prayer_times.items()}
 
-def display_lent_schedule():
+def lent_loop(stop_event):
     lent_times_today = get_lent_prayer_times()
     last_update_day = datetime.today().day
 
-    while True:
-        try:
-            now = datetime.now()
-            if now.day != last_update_day:
-                lent_times_today = get_lent_prayer_times()
-                last_update_day = now.day
+    while not stop_event.is_set():
+        now = datetime.now()
+        if now.day != last_update_day:
+            lent_times_today = get_lent_prayer_times()
+            last_update_day = now.day
 
-            os.system("cls" if os.name == "nt" else "clear")
-            print("\n✝️ Lent Prayer Schedule (Press Ctrl+C to return to menu):\n")
-            for name, prayer_time in lent_times_today.items():
-                event_dt = datetime.combine(now.date(), prayer_time)
-                if now > event_dt:
-                    event_dt += timedelta(days=1)
-                remaining = str(event_dt - now).split('.')[0]
-                print(f"🙏 {name} at {prayer_time.strftime('%H:%M')} — ⏳ {remaining}")
-            time.sleep(5)
-
-        except KeyboardInterrupt:
-            print("\nReturning to menu...\n")
-            break
+        safe_clear()
+        print("\n✝️ Lent Prayer Schedule (Press Enter to go back):\n")
+        for name, prayer_time in lent_times_today.items():
+            event_dt = datetime.combine(now.date(), prayer_time)
+            if now > event_dt:
+                event_dt += timedelta(days=1)
+            remaining = str(event_dt - now).split('.')[0]
+            print(f"🙏 {name} at {prayer_time.strftime('%H:%M')} — ⏳ {remaining}")
+        time.sleep(5)
 
 # ------------------ RAMADAN PRAYER FUNCTIONS ------------------
 
@@ -66,34 +70,38 @@ def convert_prayer_times():
         "🪬Iftar": datetime.strptime(iftar_time, "%H:%M").time()
     }
 
-def ramadan_countdown():
-    today = datetime.today()
-    days_left = (ramadan_start - today).days
-    print(f"🌙 Days until Ramadan: {days_left} days")
-
-def display_ramadan_schedule():
+def ramadan_loop(stop_event):
     prayer_times = convert_prayer_times()
-    ramadan_countdown()
+    while not stop_event.is_set():
+        now = datetime.now()
+        safe_clear()
+        print("🌙 Ramadan Prayer Countdown (Press Enter to go back):\n")
+        days_left = (ramadan_start - now).days
+        print(f"🌙 Days until Ramadan: {days_left} days\n")
 
-    while True:
-        try:
-            os.system("cls" if os.name == "nt" else "clear")
-            print("🌙 Ramadan Prayer Countdown (Press Ctrl+C to return to menu):\n")
-            now = datetime.now()
+        for name, time_val in prayer_times.items():
+            event_dt = datetime.combine(now.date(), time_val)
+            if now.time() > time_val:
+                event_dt += timedelta(days=1)
+            remaining = str(event_dt - now).split('.')[0]
+            print(f"{name} at {time_val.strftime('%H:%M')} — ⏳ {remaining}")
+        time.sleep(5)
 
-            for name, time_val in prayer_times.items():
-                event_dt = datetime.combine(now.date(), time_val)
-                if now.time() > time_val:
-                    event_dt += timedelta(days=1)
-                remaining = str(event_dt - now).split('.')[0]
-                print(f"{name} at {time_val.strftime('%H:%M')} — ⏳ {remaining}")
-            time.sleep(5)
+# ------------------ MAIN MENU WITH THREAD CONTROL ------------------
 
-        except KeyboardInterrupt:
-            print("\nReturning to menu...\n")
-            break
+def run_in_thread(target_func):
+    stop_event = threading.Event()
+    thread = threading.Thread(target=target_func, args=(stop_event,))
+    thread.start()
 
-# ------------------ MAIN MENU ------------------
+    try:
+        input()  # Wait for Enter key
+    except KeyboardInterrupt:
+        pass
+
+    stop_event.set()
+    thread.join()
+    safe_clear()
 
 def main():
     while True:
@@ -104,9 +112,9 @@ def main():
         choice = input("Enter your choice (1/2/3): ").strip()
 
         if choice == "1":
-            display_lent_schedule()
+            run_in_thread(lent_loop)
         elif choice == "2":
-            display_ramadan_schedule()
+            run_in_thread(ramadan_loop)
         elif choice == "3":
             print("Goodbye!")
             break
